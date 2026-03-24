@@ -1,0 +1,23 @@
+# HTB Virtually-Mad - VM Solution Notes
+
+The goal is to provide exactly 5 instructions to reach a specific VM state.
+
+### winning state:
+- A: 512
+- B: -1
+- C: -1
+- D: 0
+- Flag: 0x10000000
+
+### solutions:
+1. `ADD A, 256` (Hex: `02100100`)
+2. `ADD A, 256` (Hex: `02100100`)
+3. `SUB B, 1`   (Hex: `03110001`)
+4. `MOV C, B`   (Hex: `01121100`)
+5. `CMP D, 0`   (Hex: `04130000`)
+
+### full input string:
+`0210010002100100031100010112110004130000`
+
+### flag:
+`HTB{0210010002100100031100010112110004130000}`
