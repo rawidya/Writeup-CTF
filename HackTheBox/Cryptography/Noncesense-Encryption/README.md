@@ -1,35 +1,41 @@
-# HTB Challenge: Noncesense-Encryption
+# HTB Write-up: Noncesense Encryption
 
 ## 📝 Challenge Summary
-**Noncesense-Encryption** focuses on a custom stream cipher vulnerability. The encryption uses a nonce based on the current system time, creating a system of linear congruences that can be solved using number theory.
+**Noncesense Encryption** features a custom stream cipher where the key generation depends on a secret (the Flag) and a time-based Nonce. The challenge involves reversing a deterministic bit-mixer and solving a system of modular congruences using the Chinese Remainder Theorem (CRT).
 
 ---
 
-## 🔎 Step-by-Step Analysis
+## 🔎 Recon (Deconstructing the Stream Cipher)
+The server uses a "Mixer" function (similar to an LFSR) to generate 50-bit blocks of the keystream from an intermediate value $R_i$.
+The value $R_i$ is defined as:
+**$R_i = \text{FLAG} \pmod{((\text{Nonce} + i) \times 0x13373)}$**
 
-### 1. The Vulnerability: Reversible Mixing
-The server encrypts a known message using a key generated from a nonce (timestamp) and the secret flag. 
-- The first 50 bits of the keystream are directly derived from the value $R = \text{Flag} \pmod{\text{Nonce} \times K}$.
-- The mixing function used to produce these 50 bits is **reversible**, allowing us to recover the original $R$ for any given timestamp.
+### Vulnerability 1: Mixer Reversibility
+The mixer transformation is: `(High, Low) -> (Low, High XOR Low)`.
+This is a standard reversible linear operation. Since we can encrypt a known plaintext (like a single 'a'), we can recover the first 50 bits of the keystream, and by reversing the mixer for 25 rounds, we can retrieve the exact value of $R_i$.
 
-### 2. Data Collection
-By making multiple requests (around 50), you receive 50 ciphertexts and their approximate timestamps. By XORing the ciphertext with your known plaintext, you recover the keystream and then reverse the mixer to find the remainders $R_i$.
+---
 
-### 3. The CRT Attack
-You now have a system of modular equations:
-$Flag \equiv R_0 \pmod{Nonce + 0}$
-$Flag \equiv R_1 \pmod{Nonce + 1}$
+## ⚙️ Strategy: The CRT Attack
+Once we have multiple $R_i$ values, we have a system of congruences:
+$R_0 \equiv \text{FLAG} \pmod{\text{Nonce} + 0}$
+$R_1 \equiv \text{FLAG} \pmod{\text{Nonce} + 1}$
 ...
-Using the **Chinese Remainder Theorem (CRT)**, you can solve for the unique value of the Flag that satisfies all these remainders simultaneously.
-
-### 4. Implementation
-Since the nonce is based on the server's clock, you must brute-force a small range (e.g., +/- 30 seconds) around your local timestamp to find the exact starting nonce that the server used.
+Since $(\text{Nonce} + i)$ and $(\text{Nonce} + j)$ are consecutive integers, they are pairwise coprime (providing they don't share small factors). This is the perfect condition for the **Chinese Remainder Theorem**.
 
 ---
 
-## 🛠️ Tools Used
-- **Python / Pwntools**: To collect data from the server.
-- **SageMath / Crypto.Util**: To implement the CRT solver.
+## 🚀 Exploitation Workflow
+1.  **Collection**: Connect to the server and execute 50 encryption requests to gather 50 samples of $R_i$.
+2.  **Normalization**: Reverse the 25-round mixer for each sample to get the raw remainders.
+3.  **Nonce Brute-force**: Estimate the server's timestamp and iterate through a local window ($\pm 30$ seconds) to find the exact `Nonce` used.
+4.  **Solve**: For the correct Nonce, solve the system of 50 congruences using CRT to recover the large integer representing the Flag.
+
+---
+
+## ✅ Result
+The integer solution from CRT, when converted to bytes, reveals the flag.
+**Flag**: `HTB{...}`
 
 ---
 *Disclaimer: This guide is a rephrased summary for educational purposes.*

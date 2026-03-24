@@ -1,34 +1,48 @@
-# HTB Challenge: Untrusted-Node
+# HTB Write-up: Untrusted Node
 
 ## 📝 Challenge Summary
-**Untrusted-Node** simulates a Quantum Key Distribution (QKD) protocol. You act as a Man-in-the-Middle (the Trusted Node). The protocol has a redundancy flaw: for every bit of the key, multiple identical qubits are sent. You must intercept and measure some while letting others pass to recover the secret key without being detected.
+**Untrusted Node** is a simulation of a Quantum Key Distribution (QKD) protocol. Alice and Bob attempt to establish a secure key, but the protocol has a redundancy flaw. As the "Trusted Node" in the middle, we can intercept the key bits without alerting the parties or causing a reconciliation failure.
 
 ---
 
-## 🔎 Step-by-Step Analysis
-
-### 1. Identifying the Flaw
-The `transmitter.py` sends "chunks" of $k$ qubits for every single bit. All $k$ qubits are in the same encoded state (Z-basis or X-basis). Alice and Bob will later compare their bases to decide which bits to keep.
-
-### 2. The Interception Strategy
-Since you don't know the basis (Z or X) in advance, you can use the redundancy:
-1.  **Intercept Qubits 0 & 1**: Measure the first qubit in the **Z-basis** and the second in the **X-basis**.
-2.  **Pass the rest**: Let the remaining $k-2$ qubits pass through to Bob undisturbed (`gate = -1`).
-3.  **Result**: You now have the bit value regardless of which basis is chosen later.
-
-### 3. Reconciliation Bypass
-During the "match" phase, the server asks you for gates to send back to Alice. To prevent Alice from noticing your measurements:
-- Send a "garbage" gate index (e.g., `2`) for positions 0 and 1. This causes Alice to skip them.
-- Send Bob's original gates for the remaining positions.
-
-### 4. Key Recovery
-When the server reveals the indices where Alice and Bob's bases matched, you check which basis was used. If it was Z, use your result from qubit 0. If it was X, use your result from qubit 1. This allows you to reconstruct the full key, hash it (SHA256), and decrypt the server's flag command.
+## 🔎 Recon (The Redundancy Flaw)
+Analysis of `transmitter.py` reveals that Alice sends a "chunk" of $k$ identical qubits for every single bit of the key. All qubits in a chunk share the same basis (Z or X) and the same bit value.
+- To maintain the protocol's integrity, Bob only needs to successfully measure **one** qubit in the correct basis.
 
 ---
 
-## 🛠️ Tools Used
-- **Pwntools**: To automate the two-stage interception and reconciliation process.
-- **Quantum Man-in-the-Middle**: Replicating bits using the "No-Cloning Theorem" bypass provided by the redundancy.
+## ⚙️ Strategy: Man-in-the-Middle (MitM)
+We exploit the extra qubits in each chunk to learn the key bit for both possible bases simultaneously.
+
+### 1. Interception Phase
+For every chunk of size $k$:
+1.  Intercept **Qubit 0** and measure it in the **Z-basis** (Gate `0`). Store the result as $R_Z$.
+2.  Intercept **Qubit 1** and measure it in the **X-basis** (Gate `1`). Store the result as $R_X$.
+3.  Pass the remaining $k-2$ qubits through to Bob unaltered (Gate `-1`).
+
+### 2. Reconciliation Phase
+When Bob shares his measurement bases, we must force the Transmitter to skip the qubits we measured (0 and 1) so it doesn't see our interference.
+- We send a **Garbage Gate (`2`)** for the first two positions. Since `2` matches neither `0` nor `1`, Alice skips them.
+- We provide Bob's real gates for the rest of the chunk.
+
+### 3. Key Reconstruction
+When Alice confirms a "match," we check which basis Bob used.
+- If Bob matched on Z (0), the key bit is our $R_Z$.
+- If Bob matched on X (1), the key bit is our $R_X$.
+
+---
+
+## 🚀 Exploitation Workflow
+1.  Collect the `sync_signal` (chunk sizes).
+2.  Perform the double-basis measurement via the first payload.
+3.  Intercept and spoof the second payload during gate reconciliation.
+4.  Reconstruct the full binary key, hash it with SHA-256, and use it to decrypt the final command.
+
+---
+
+## ✅ Result
+The protocol is successfully subverted, allowing us to fetch the secret flag.
+**Flag**: `HTB{...}`
 
 ---
 *Disclaimer: This guide is a rephrased summary for educational purposes.*

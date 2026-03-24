@@ -1,39 +1,45 @@
-# HTB Challenge: Bypass
+# HTB Write-up: Bypass
 
 ## 📝 Challenge Summary
-**Bypass** is a .NET reverse engineering challenge where the goal is to authenticate and read a hidden key. The binary uses client-side checks and resource encryption to hide its logic. The key to solving this is extracting the encrypted resources and patching the IL (Intermediate Language) code to bypass the "impossible" checks.
+**Bypass** is a .NET reverse engineering challenge that presents a client-side authentication screen. The application is obfuscated and contains an "impossible" check that always returns false. To solve it, we must extract encrypted resources and patch the binary Flow to skip the security gates.
 
 ---
 
-## 🔎 Step-by-Step Analysis
+## 🔎 Recon (Initial Analysis)
+The provided file is a 9KB .NET assembly. Loading it into IDA Pro initially shows confusing, obfuscated names like `_0__0` and `_0__1`. Because it's a managed .NET application, **dnSpy** is a much more effective tool for analysis than traditional disassemblers.
 
-### 1. Identifying the Platform
-Initial inspection reveals that the executable is a .NET assembly. While tools like IDA Pro can handle it, **dnSpy** or **ILSpy** are much better suited for .NET reversing as they can show the original C# source code.
+### The Obfuscation Scheme
+The application hides all its strings (passwords, status messages, etc.) in an embedded resource named **"0"**. At runtime, it uses the `RijndaelManaged` (AES) class to decrypt this resource. 
 
-### 2. Analyzing the Logic
-Opening the binary in dnSpy shows that most strings are obfuscated. There is an embedded resource named "0" which contains the encrypted prompts and the target password.
-
-The program has a two-stage check:
-- **Check 1**: Located in the method `'0'::'1'`, this check is hardcoded to return `false` regardless of the input.
-- **Check 2**: A standard password comparison against a decrypted value from the resource.
-
-### 3. Decrypting Resources
-The resource decryption uses a standard AES (RijndaelManaged) algorithm. You can extract the decryption key from the `__.cctor` (static constructor) and write a Python script to decrypt the "0" resource. This will reveal the password needed for the second check.
-
-### 4. Patching the Binary (The "Bypass")
-To pass the first check:
-1.  Open the method `'0'::'1'` in dnSpy.
-2.  Right-click and select "Edit Method (C#)".
-3.  Change `return false;` to `return true;`.
-4.  Compile and save the module.
-
-Now, when you run the patched executable and enter the password extracted from the resource, you will get the flag.
+### The Impossible Gate
+Analysis of the `main` method reveals a multi-stage check. The first check calls a method that is hardcoded in Intermediate Language (IL) to always load a zero (`ldc.i4.0`) before returning. This makes the check impossible to pass without modification.
 
 ---
 
-## 🛠️ Tools Used
-- **dnSpy**: For decompiling and patching .NET code.
-- **Python**: To write a decryption script for the embedded resource.
+## ⚙️ Strategy: Bypassing the Protection
+Our attack involves two phases: extracting the secrets and patching the code logic.
+
+### 1. Resource Decryption
+We extract the encrypted resource "0" using dnSpy. The decryption key and IV are also stored within the binary. We use a Python script to decrypt the resource and recover the plaintext password used for the final stage.
+
+### 2. IL Patching
+Using dnSpy's "Edit IL Instructions" feature, we locate the `brfalse.s` instruction responsible for the failure message.
+- **Goal**: Change the conditional branch to a `nop` (No-op) or a direct jump.
+- **Pitfall**: Manual hex patching often breaks the method signature or the JIT compiler. Using dnSpy to handle the instruction re-encoding is the safest method.
+
+---
+
+## 🚀 Exploitation Steps
+1.  **Extract**: Identify resource "0" and save it to disk.
+2.  **Decrypt**: Use a script to reverse the AES-CBC encryption, revealing the password: `ThisIsAReallyReallySecureKey...`
+3.  **Patch**: Open the binary in dnSpy, find the entry point, and replace the `brfalse.s` instruction with a `pop` or `nop` to bypass the `flag == false` condition.
+4.  **Execute**: Run the patched binary, provide the recovered password, and the program will print the flag.
+
+---
+
+## ✅ Result
+After patching, the final barrier is cleared.
+**Flag**: `HTB{...}`
 
 ---
 *Disclaimer: This guide is a rephrased summary for educational purposes.*

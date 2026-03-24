@@ -1,38 +1,55 @@
-# HTB Challenge: Wayback
+# HTB Write-up: Wayback
 
 ## 📝 Challenge Summary
-**Wayback** is a time-based reverse engineering challenge. A password was generated at a specific point in time using a time-seeded random number generator. The goal is to identify the seeding formula and brute-force the timeframe to recover the password.
+**Wayback** is a time-based reverse engineering challenge. You are given an encrypted Bitcoin wallet and a binary (`V1`) that generates passwords. The core vulnerability is the use of a predictable time-based seed for the random number generator. By pinpointing the exact timeframe mentioned in the challenge description, we can brute-force the password and recover the flag.
 
 ---
 
-## 🔎 Step-by-Step Analysis
-
-### 1. Analyzing the Binary
-The binary `V1` uses the standard C library function `srand()` to seed the random number generator. Decompiling the `generate_password` function shows that the seed is calculated using the `time(0)` value and members of the `tm` struct (month, year, hour, etc.).
-
-### 2. Replicating the Seed
-The seed formula is:
+## 🔎 Recon (The Seed Generation)
+The challenge provides a timeframe: **December 10th-11th, 2013**.
+Static analysis of the `V1` binary reveals that the `srand()` seed is generated using a combination of the current date and time:
 ```c
-seed = (100000000 * (month + 1)) + (1410065408 * year) + (10000 * hour) + ...
+seed = (month * 10^8) + (year * MAGIC_CONSTANT) + (hour * 10000) + ...
 ```
-Note that the multiplication with `1410065408` will likely overflow in a 32-bit integer, which is a key detail when replicating the logic in other languages.
-
-### 3. Brute-Forcing the TimeWindow
-The challenge description specifies that the password was generated between **December 10th and 11th, 2013**. This gives us a limited window of only 48 hours (172,800 seconds).
-
-1.  Iterate through each second in that window.
-2.  Calculate the seed for that second using the reconstructed formula.
-3.  Call `srand(seed)` and then call `rand()` 20 times to generate a password candidate.
-4.  Try using the candidate as an AES-CBC key to decrypt the provided data.
-
-### 4. Speeding it Up
-Since Python is slow for hundreds of thousands of operations, a C-based solver or using `ctypes` to call `libc` is recommended to achieve the result in seconds.
+Because the `rand()` function in `glibc` is a Pseudo-Random Number Generator (PRNG), supplying the same seed will always produce the same "random" 20-character password string.
 
 ---
 
-## 🛠️ Tools Used
-- **IDA Pro / Ghidra**: To reverse the seed formula.
-- **C/Python**: To implement the brute-force solver.
+## ⚙️ Strategy: Brute-Force the Clock
+The search space is small: 2 days $\times$ 24 hours $\times$ 3600 seconds = **172,800 possible seeds**.
+Our strategy involves:
+1.  Re-implementing the seed formula in a high-performance C script.
+2.  Iterating through every second in the December 10-11, 2013 window.
+3.  Generating the candidate 20-character password for each seed.
+4.  Attempting to decrypt the fixed ciphertext using each candidate as the AES-256-CBC key.
+
+---
+
+## 🚀 The Solve Script (High-Level Logic)
+We use a C program with the `OpenSSL` library for maximum speed.
+- **Charset**: `abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!@#$%^&*_+0123456789`
+- **Verification**: We check the decrypted output for printable ASCII characters and the "HTB" prefix.
+
+```c
+// Core loop logic
+for (int day = 10; day <= 11; day++) {
+    for (int sec = 0; sec < 86400; sec++) {
+        unsigned int seed = calculate_seed(2013, 12, day, sec);
+        srand(seed);
+        generate_password(password, 20, charset);
+        if (try_aes_decrypt(ciphertext, password)) {
+            printf("Found Flag: %s\n", decrypted_text);
+            return 0;
+        }
+    }
+}
+```
+
+---
+
+## ✅ Result
+The brute-force completes in seconds. The correct seed corresponds to a specific timestamp on December 11th, revealing the password and the flag.
+**Flag**: `HTB{...}`
 
 ---
 *Disclaimer: This guide is a rephrased summary for educational purposes.*

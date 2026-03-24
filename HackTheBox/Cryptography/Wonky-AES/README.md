@@ -1,31 +1,39 @@
-# HTB Challenge: Wonky AES
+# HTB Write-up: Wonky AES
 
 ## 📝 Challenge Summary
-**Wonky AES** is a classic Cryptography challenge involving a **Differential Fault Analysis (DFA)** attack on AES-128. An intentional fault is injected during the encryption process, which can be exploited to recover the master key.
+**Wonky AES** is a masterclass in side-channel analysis, specifically **Differential Fault Analysis (DFA)**. The challenge provides an AES-128 encryption service that intentionally injects a fault into the encryption process. By analyzing the relationship between correct and faulty ciphertexts, we can mathematically recover the encryption key.
 
 ---
 
-## 🔎 Step-by-Step Analysis
+## 🔎 Recon (Identifying the Vulnerability)
+Static analysis of the provided C source code reveals a critical flaw:
+- The system generates a random key for every session.
+- It provides a `CipherFault` routine that injects a 1-byte error in the **9th round** of AES, just before the `MixColumns` transformation.
 
-### 1. Identifying the Vulnerability
-The server provides two ciphertexts for every plaintext: a correct one ($C$) and a faulty one ($C'$). The source code reveals that a bit-flip fault is injected in the 9th round of AES, just before the `MixColumns` operation.
-
-### 2. Collecting Data
-Because the round key is required to propagate back to the master key, you need to collect multiple pairs of $(C, C')$. A single fault propagates to 4 bytes of the ciphertext. By collecting around 1000 pairs, you can mathematically solve for the candidates of the 10th round key ($K_{10}$).
-
-### 3. Recovering the Key
-1.  Use the DFA equations for AES to find $K_{10}$.
-2.  Reverse the AES Key Schedule starting from $K_{10}$ to obtain the original 128-bit master key ($K_0$).
-3.  Request the encrypted flag from the server and decrypt it using $K_0$.
-
-### 4. Implementation
-The attack must be performed in a single session because the key is randomized on every connection. A Python script using `pwntools` is the standard tool for this automation.
+### The Physics of the Attack
+In AES, a fault injected before `MixColumns` in round 9 will spread to exactly 4 bytes of the state in round 10. By comparing the correct ciphertext ($C$) and the faulty one ($C'$), we can eliminate thousands of potential candidates for the last round key ($K_{10}$).
 
 ---
 
-## 🛠️ Tools Used
-- **Python / Pwntools**: For server interaction.
-- **DFA Solver**: Custom implementation of the AES DFA equations.
+## ⚙️ Strategy: The Automated DFA Attack
+Since the key changes every session, we must maintain a single persistent connection.
+1.  **Collection**: The solver script (using `pwntools`) collects 1000 pairs of (Correct, Faulty) ciphertexts. While DFA theoretically works with 2-4 pairs, 1000 ensures a single, unique key candidate by removing all mathematical noise (false positives).
+2.  **Analysis**: For each 4-byte block, we iterate through byte candidates for $K_{10}$ that satisfy the fault equations.
+3.  **Key Schedule Reversal**: Once the 16-byte $K_{10}$ is found, we reverse the AES key expansion algorithm to derive the original Master Key.
+
+---
+
+## 🚀 Exploitation Flow
+1.  **Stage 1**: Connect and flood the service with encryption requests to gather the traces.
+2.  **Stage 2**: Process the traces in-memory to recover $K_{10}$.
+3.  **Stage 3**: Request the encrypted flag from the server.
+4.  **Stage 4**: Decrypt the flag using the recovered Master Key.
+
+---
+
+## ✅ Result
+The terminal output reveals the Master Key and the decrypted flag after the collection phase.
+**Flag**: `HTB{...}` (derived from the DFA solver).
 
 ---
 *Disclaimer: This guide is a rephrased summary for educational purposes.*

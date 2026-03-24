@@ -1,41 +1,49 @@
-# HTB Challenge: Not-Posixtive
+# HTB Write-up: Not Posixtive
 
 ## 📝 Challenge Summary
-**Not-Posixtive** is a Python-based sandbox challenge that exploits a unique collision in Python's hashing mechanism. The goal is to provide two different inputs that produce the same hash value while bypassing strict character filters.
+**Not Posixtive** is a Python-based challenge that explores a rare mathematical edge case: **the hash collision of small negative integers**. The goal is to produce two different command outputs with identical hashes while bypassing strict input filters.
 
 ---
 
-## 🔎 Step-by-Step Analysis
+## 🔎 Recon (The Logic Vulnerability)
+The server code contains the following core check:
+```python
+if z1 != z2 and str(z1) != str(z2) and hash(z1) == hash(z2):
+    # Success
+```
+In Python, integers typically return themselves as their hash. However, an intentional quirk in the CPython implementation causes **`hash(-1)`** to return **`-2`**, which is identical to the hash of **`-2`**.
 
-### 1. The Hash Collision
-The server validates your inputs using the following condition:
-`debug[0] != debug[1] and hash(debug[0]) == hash(debug[1])`
-In Python, integers are hashed to themselves (e.g., `hash(5) == 5`). However, there is a legendary exception: **`hash(-1)` and `hash(-2)` both return `-2`**. 
-
-### 2. Generating -1 and -2
-The server calculates its values based on the return code of a binary times a "mode".
-`Result = ExitCode * Mode`
-To get -1 and -2, we need:
-1.  **Mode = -1**
-2.  **ExitCode 1 and ExitCode 2**
-
-### 3. Bypassing the "Mode" Filter
-The mode input forbids the minus sign `-`. In Python, you can use the bitwise NOT operator **`~`** to get -1.
-`~0` in Python evaluates to `-1`.
-
-### 4. Exploiting `grep` Exit Codes
-We use the `grep` binary (4 letters) to generate the exit codes:
-- **Exit Code 1**: Run `grep` with a pattern that doesn't match a file (`grep NOMATCH server.py`).
-- **Exit Code 2**: Run `grep` against a non-existent file (`grep ANY fakefile`).
-
-### 5. Winning the Challenge
-By combining `Mode = ~0` and the two `grep` commands, we satisfy the `hash(z1) == hash(z2)` condition and retrieve the flag.
+This provides our collision: we need one command to return `-1` and the other to return `-2`.
 
 ---
 
-## 🛠️ Tools Used
-- **Python Internal Research**: Understanding the `hash(-1)` implementation.
-- **Linux Exit Codes**: Utilizing standard binary behaviors for control.
+## ⚙️ Strategy: Bypassing the Sandbox
+The server restricts our input for the `mode` parameter (no signs like `-` or `+`) and the `binary` length (max 4 chars).
+
+### 1. Reaching -1 without a Minus Sign
+We use the bitwise inversion operator **`~`**. 
+- **`~0`** is the equivalent of `-1`. This satisfies the character filter and the 2-character length limit.
+
+### 2. Controlling Exit Codes with `grep`
+The server calculates the result as `return_code * mode`. Using `mode = -1`, we need exit codes **1** and **2**.
+- **`grep`** (4 characters) is the perfect candidate:
+  - Exit code **1** occurs when a pattern is not found in a file.
+  - Exit code **2** occurs when the specified file does not exist.
+
+---
+
+## 🚀 Exploitation Payload
+We execute two separate runs:
+1.  `bin=grep`, `switch=Nomatch`, `compl=server.py`, `mode=~0` -> **Result: -1**
+2.  `bin=grep`, `switch=Nomatch`, `compl=fakefile`, `mode=~0` -> **Result: -2**
+
+Since `-1 != -2` but `hash(-1) == hash(-2)`, the conditions are satisfied.
+
+---
+
+## ✅ Result
+The hash collision is triggered, and the server prints the flag.
+**Flag**: `HTB{...}`
 
 ---
 *Disclaimer: This guide is a rephrased summary for educational purposes.*

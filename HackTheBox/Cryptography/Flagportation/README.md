@@ -1,40 +1,50 @@
-# HTB Challenge: Flagportation
+# HTB Write-up: Flagportation
 
 ## 📝 Challenge Summary
-**Flagportation** is a quantum computing challenge that implements a 3-qubit quantum teleportation protocol. You must act as the receiver and apply the necessary corrections to restore the teleported state and recover the flag.
+**Flagportation** is a quantum computing challenge that implements a simplified **Quantum Teleportation** protocol. A 2-bit secret is encoded into a 3-qubit state. By observing the measurement results of the first two qubits and applying the correct mathematical "corrections" to the third, we can teleport and reconstruct the original bits.
 
 ---
 
-## 🔎 Step-by-Step Analysis
+## 🔎 Recon (The Teleportation Protocol)
+The server provides the following information for each block of the flag:
+- **Basis**: Either `Z` or `X`.
+- **Measurement 0 ($m_0$)**: Result of the first qubit.
+- **Measurement 1 ($m_1$)**: Result of the second qubit.
 
-### 1. Understanding Teleportation
-In a standard teleportation circuit, Alice has two qubits and Bob has one. Alice measures her two qubits ($m_0, m_1$) and sends the results to Bob. Bob must then apply a correction operator to his qubit to restore the original state.
-The correction operator is: $X^{m1} Z^{m0}$.
-
-### 2. Interaction Loop
-For each 2-bit chunk of the flag, the server provides:
-- The **Basis** (Z or X) used for encoding.
-- The results of measurements $m_0$ and $m_1$.
-
-### 3. Applying Corrections
-You must send the instructions to apply the corresponding gates to Bob's qubit (qubit 2):
-- `m0=1, m1=0`: Send `Z:2`
-- `m0=0, m1=1`: Send `X:2`
-- `m0=1, m1=1`: Send `Z:2;X:2` (Order is important!)
-- `m0=0, m1=0`: Send a no-op like `Z:2;Z:2`.
-
-### 4. Measuring the Result
-After applying the correction, specify the same **Basis** the server provided (Z or X) to measure qubit 2. 
-- If basis was Z, the measurement result is the second bit of the pair.
-- If basis was X, the measurement result is the first bit of the pair.
-
-Combining these pairs for all rounds (e.g., 204 rounds) allows you to reconstruct the binary string of the flag.
+Our task is to provide the "instructions" (gates) to be applied to the third qubit (Qubit 2) before it is measured to recover the second bit of the secret.
 
 ---
 
-## 🛠️ Tools Used
-- **Pwntools**: To automate the high-speed interaction for multiple rounds.
-- **Quantum Logic**: Implementing the correction matrix.
+## ⚙️ Strategy: Quantum Error Correction
+Standard quantum teleportation requires the receiver to apply a correction operator based on the classical bits $m_0$ and $m_1$ sent by the sender:
+**$\text{Correction} = X^{m_1} Z^{m_0}$**
+
+### Instruction Mapping
+We translate this formula into the server's gate format:
+- $m_0=0, m_1=0$: No correction needed. (Used `Z:2;Z:2` as an identity/no-op).
+- $m_1=1, m_0=0$: Apply `X:2`.
+- $m_1=0, m_0=1$: Apply `Z:2`.
+- $m_1=1, m_0=1$: Apply `Z:2` then `X:2`.
+
+---
+
+## 🚀 Decoding the Secret
+After the correction, we measure Qubit 2 in the same `Basis` provided by the server.
+- The **First Bit** is implied by the Basis (`Z`=0, `X`=1).
+- The **Second Bit** is the result of our measurement on Qubit 2.
+
+### Automation Script
+The challenge consists of over 200 blocks. We use a Python script with `pwntools` to:
+1.  Parse the basis and $m_0, m_1$ values.
+2.  Send the corresponding correction gates.
+3.  Receive the result of our measurement.
+4.  Join the 28-bit results and convert the final binary string into the flag bytes.
+
+---
+
+## ✅ Result
+All qubits are successfully teleported and decoded, revealing the secret message.
+**Flag**: `HTB{...}`
 
 ---
 *Disclaimer: This guide is a rephrased summary for educational purposes.*

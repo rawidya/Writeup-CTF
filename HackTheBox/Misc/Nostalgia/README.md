@@ -1,33 +1,46 @@
-# HTB Challenge: Nostalgia
+# HTB Write-up: Nostalgia
 
 ## 📝 Challenge Summary
-**Nostalgia** is a Game Boy Advance (GBA) reverse engineering challenge. You are provided with a `.gba` ROM file that requires a secret "cheat code" to reveal the flag. The goal is to disassemble the ROM and patch the validation logic.
+**Nostalgia** is a Game Boy Advance (GBA) reverse engineering challenge. We are provided with a ROM (`Nostalgia.gba`) that prompts for a cheat code. To solve it, we must analyze the ARM-based binary and patch the validation logic to force a "correct" result.
 
 ---
 
-## 🔎 Step-by-Step Analysis
+## 🔎 Recon (Emulation & Disassembly)
+Running the ROM in `mGBA` reveals a simple input screen. Pressing **Start** submits the code, but without the correct sequence, nothing happens.
 
-### 1. Identifying the Architecture
-GBA ROMs run on ARM processors. To analyze it correctly, you must use a disassembler (like IDA Pro or Ghidra) set to **ARM:LE:32:v4T**.
-
-### 2. Locating the Validation Logic
-By analyzing the cross-references and the game loop, you can find the function responsible for checking the user input (cheat code). At address `0x1638`, there is a conditional branch:
-`BNE loc_161E` (Branch if Not Equal).
-This branch triggers if the entered code is incorrect, preventing the flag from appearing.
-
-### 3. Patching the Branch
-To bypass the check, you can invert the logic. Changing `BNE` to `BEQ` (Branch if Equal) tells the game to follow the "correct code" path when the input is actually incorrect.
-- **Original Bytes**: `F1 D1` (`BNE`)
-- **Patched Bytes**: `F1 D0` (`BEQ`)
-
-### 4. Verification
-After applying the patch and saving the modified ROM, open it in an emulator (like mGBA). Pressing the Start button without entering a code will now bypass the validation and display the flag.
+### Loading into IDA Pro
+To analyze GBA ROMs, the processor type must be set to **ARM:LE:32:v4T**.
+Static analysis points to `sub_15A8` as the handler for user input. At address **`0x1638`**, we find the critical decision point:
+`ROM:00001638   BNE   loc_161E`
+This `BNE` (Branch if Not Equal) instruction redirects the execution to a failure block if the cheat code comparison fails.
 
 ---
 
-## 🛠️ Tools Used
-- **IDA Pro**: For ARM disassembly and binary patching.
-- **mGBA**: To run and verify the patched ROM.
+## ⚙️ Strategy: Inverting the Logic
+Instead of searching for the complex cheat code in memory, we can simply patch the binary to accept *any* input.
+
+### Identifying the Patch
+- **Instruction**: `BNE` (Branch if Not Equal)
+- **Opcode**: `D1`
+- **Target**: `BEQ` (Branch if Equal)
+- **Opcode**: `D0`
+
+By changing the byte at `0x1638` from **`D1`** to **`D0`**, the program will now branch to the success state for every "wrong" code we enter.
+
+---
+
+## 🚀 Execution
+1.  Open the ROM in a hex editor or use IDA's "Patch program" feature.
+2.  Navigate to offset `0x1638`.
+3.  Change the byte value from `D1` to `D0`.
+4.  Apply the patch and save the new `.gba` file.
+5.  Launch the patched ROM, enter any code (or none), and press Start.
+
+---
+
+## ✅ Result
+The game accepts the code and displays the flag on the simulated screen.
+**Flag**: `HTB{...}` (transcribed from the emulator).
 
 ---
 *Disclaimer: This guide is a rephrased summary for educational purposes.*
